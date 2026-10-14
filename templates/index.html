@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Veri AI: check if an image is real or AI-generated</title>
+  <meta name="description" content="Drop in any image and find out how likely it is to be AI-generated.">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23fff'/%3E%3Cpath d='M16 6l2.4 7.6L26 16l-7.6 2.4L16 26l-2.4-7.6L6 16l7.6-2.4z' fill='%23000'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    try {
+      var calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!calm && !sessionStorage.getItem('veri-intro')) document.documentElement.classList.add('intro-on');
+    } catch (e) {}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --stage: #000;
+      --chalk: #fff;
+      --pink: #f59bd7;
+      --mint: #8df7ae;
+      --lemon: #f5e67b;
+      --violet: #a78bfa;
+      --sky: #6ea8ff;
+      --coral: #ff8a5b;
+      --muted: rgba(255, 255, 255, 0.62);
+      --line: rgba(255, 255, 255, 0.14);
+      --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+      --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+      --pad: clamp(20px, 5vw, 64px);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 88px; -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--stage); color: var(--chalk); font: 400 1rem/1.55 var(--body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, canvas { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    h1, h2, h3, p { margin: 0; }
+    :focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
+    .wrap { width: min(calc(1200px + 2 * var(--pad)), 100%); margin-inline: auto; padding-inline: var(--pad); }
+    .h2 {
+      font: 700 clamp(2.4rem, 5.6vw, 5rem) / 0.95 var(--display);
+      letter-spacing: -0.045em;
+    }
+    .logo { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+    .logo-word { font: 800 1.7rem/1 var(--display); letter-spacing: -0.04em; }
+    .logo-badge {
+      display: inline-grid; place-items: center;
+      min-width: 34px; height: 30px; padding-inline: 7px;
+      border-radius: 9px; background: var(--chalk); color: var(--stage);
+      font: 800 1rem/1 var(--display); letter-spacing: -0.02em;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px 26px; border-radius: 999px; border: 1px solid transparent;
+      font-weight: 600; font-size: 0.95rem; text-decoration: none;
+      transition: transform 0.15s ease, background-color 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn--solid { background: var(--chalk); color: var(--stage); }
+    .btn--ghost { background: rgba(255, 255, 255, 0.08); border-color: var(--line); color: var(--chalk); }
+    .btn--ghost:hover { background: rgba(255, 255, 255, 0.16); }
+    .btn--small { padding: 11px 20px; font-size: 0.85rem; }
+    .intro { display: none; position: fixed; inset: 0; z-index: 100; place-items: center; background: var(--stage); transition: opacity 0.6s ease; }
+    .intro-on .intro { display: grid; }
+    .intro.is-done { opacity: 0; pointer-events: none; }
+    .intro-word {
+      font: 600 clamp(2.6rem, 8vw, 5rem) / 1 var(--display);
+      letter-spacing: -0.035em; text-shadow: 0 0 28px rgba(140, 190, 255, 0.5);
+      animation: word-in 1.1s ease both, word-out 0.5s ease 1.6s forwards;
+    }
+    .intro-i { color: #cfe3ff; text-shadow: 0 0 22px #6ea8ff, 0 0 60px #6ea8ff; }
+    .intro-logo { position: absolute; display: flex; gap: 12px; align-items: center; opacity: 0; animation: logo-in 0.7s ease 1.9s forwards; }
+    .intro-logo .logo-word { font-size: clamp(3rem, 9vw, 5.4rem); }
+    .intro-logo .logo-badge { height: clamp(44px, 9vw, 70px); min-width: clamp(54px, 11vw, 84px); font-size: clamp(1.5rem, 4.5vw, 2.6rem); border-radius: 16px; }
+    .intro-skip {
+      position: absolute; right: var(--pad); bottom: calc(28px + var(--safe-bottom));
+      padding: 10px 18px; border-radius: 999px; border: 1px solid var(--line);
+      background: transparent; color: var(--muted); font-size: 0.85rem;
+    }
+    @keyframes word-in { from { opacity: 0; filter: blur(14px); letter-spacing: 0.08em; } to { opacity: 1; filter: blur(0); letter-spacing: -0.035em; } }
+    @keyframes word-out { to { opacity: 0; transform: scale(0.96); } }
+    @keyframes logo-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+    .nav {
+      position: fixed; inset: 0 0 auto 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: calc(16px + var(--safe-top)) max(var(--pad), calc((100vw - 1200px) / 2)) 0;
+      pointer-events: none;
+    }
+    .nav > * { pointer-events: auto; }
+    .nav .logo { transition: background-color 0.25s ease; }
+    .nav.is-stuck .logo { padding: 7px 12px; border-radius: 16px; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(16px); }
+    .pill-nav {
+      display: flex; gap: 2px; padding: 4px; border-radius: 16px;
+      background: rgba(255, 255, 255, 0.1); border: 1px solid var(--line); backdrop-filter: blur(16px);
+    }
+    .pill-nav a { padding: 10px 16px; border-radius: 12px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: background-color 0.2s ease; }
+    .pill-nav a:hover { background: rgba(255, 255, 255, 0.14); }
+    .pill-nav a.solid { background: var(--chalk); color: var(--stage); font-weight: 600; }
+    .pill-nav a.solid:hover { background: #e8e8e8; }
+    .hero {
+      position: relative; isolation: isolate; overflow: hidden;
+      min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-end;
+      padding: 120px var(--pad) clamp(56px, 8vh, 96px);
+    }
+    .sphere {
+      position: absolute; z-index: -1; top: 50%; right: max(-6vw, -80px); width: min(72vw, 880px); aspect-ratio: 1; transform: translateY(-48%); touch-action: pan-y; cursor: grab;
+    }
+    .sphere:active { cursor: grabbing; }
+    .hero-copy { width: min(1200px, 100%); margin-inline: auto; pointer-events: none; }
+    .hero-copy a, .hero-copy .actions { pointer-events: auto; }
+    .eyebrow {
+      display: flex; align-items: center; gap: 12px; max-width: 28ch; margin-bottom: 18px;
+      font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
+    }
+    .eyebrow i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 12px var(--sky); }
+    .grad {
+      background: linear-gradient(100deg, var(--mint) 0%, var(--lemon) 34%, var(--violet) 66%, var(--sky) 100%);
+      background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: drift 10s ease-in-out infinite alternate;
+    }
+    @keyframes drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+    .hero h1 { font: 700 clamp(3.2rem, 9.4vw, 8.6rem) / 0.92 var(--display); letter-spacing: -0.05em; padding-bottom: 0.08em; }
+    .lede { margin-top: 26px; max-width: 34ch; font-size: clamp(1.05rem, 1.6vw, 1.3rem); line-height: 1.5; color: var(--muted); }
+    .actions { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .stat { margin-top: 34px; font-size: 0.78rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+    .stat strong { color: var(--chalk); font-weight: 700; }
+    .lab {
+      position: relative; z-index: 2; margin-top: -36px;
+      background: var(--pink); color: var(--stage); border-radius: 40px 40px 0 0; padding: clamp(80px, 11vw, 150px) var(--pad);
+    }
+    .lab-grid {
+      width: min(1200px, 100%); margin-inline: auto; display: grid; gap: 32px clamp(32px, 7vw, 110px); align-items: start; grid-template-columns: minmax(0, 1fr); grid-template-areas: "copy" "phone" "report";
+    }
+    .lab-copy { grid-area: copy; }
+    .phone-wrap { grid-area: phone; display: flex; justify-content: center; }
+    .report { grid-area: report; }
+    @media (min-width: 900px) {
+      .lab-grid { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "copy phone" "report phone"; grid-template-rows: auto 1fr; }
+      .report { align-self: start; }
+      .phone-wrap { position: sticky; top: 96px; align-self: start; grid-row: 1 / span 2; }
+    }
+    .lab-text { margin-top: 24px; max-width: 38ch; font-size: 1.1rem; }
+    .phone {
+      --v: var(--chalk); position: relative; width: clamp(250px, min(76vw, 318px, calc((100svh - 130px) * 9 / 18.6)), 330px); aspect-ratio: 9 / 18.6; padding: 10px; border-radius: 46px; background: var(--stage); box-shadow: 0 0 0 2px #2b2b2b inset, 0 50px 70px -30px rgba(90, 0, 70, 0.55), 0 12px 24px -12px rgba(90, 0, 70, 0.4);
+    }
+    .phone[data-verdict="ai"] { --v: var(--coral); }
+    .phone[data-verdict="real"] { --v: var(--mint); }
+    .phone[data-verdict="uncertain"] { --v: var(--lemon); }
+    .phone-notch { position: absolute; z-index: 5; top: 18px; left: 50%; width: 84px; height: 22px; border-radius: 99px; background: var(--stage); transform: translateX(-50%); }
+    .screen {
+      position: relative; height: 100%; overflow: hidden; border-radius: 36px; background: #121212; outline: 2px dashed transparent; outline-offset: -8px; transition: outline-color 0.2s ease;
+    }
+    .screen.is-over { outline-color: var(--mint); }
+    .screen:has(.file:focus-visible) { box-shadow: 0 0 0 3px var(--sky); }
+    .file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .drop {
+      position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; text-align: center; padding: 24px; background: radial-gradient(120% 70% at 50% 100%, rgba(167, 139, 250, 0.28), transparent 60%), radial-gradient(90% 60% at 50% 0%, rgba(141, 247, 174, 0.14), transparent 60%);
+    }
+    .drop-icon { display: grid; place-items: center; width: 64px; height: 64px; margin-bottom: 14px; border-radius: 50%; color: var(--stage); background: radial-gradient(circle at 30% 30%, #d9ff8a, var(--mint) 55%, var(--sky)); box-shadow: 0 0 36px rgba(141, 247, 174, 0.4); }
+    .drop-title { font: 700 1.6rem/1.1 var(--display); letter-spacing: -0.03em; color: var(--chalk); }
+    .drop-sub { color: var(--muted); font-size: 0.92rem; }
+    .shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s ease; }
+    .scan { position: absolute; left: 0; right: 0; top: 0; height: 28%; opacity: 0; pointer-events: none; background: linear-gradient(to bottom, transparent, rgba(141, 247, 174, 0.45)); border-bottom: 2px solid var(--mint); }
+    .busy { position: absolute; z-index: 3; left: 0; right: 0; bottom: 36px; text-align: center; font-weight: 600; opacity: 0; text-shadow: 0 1px 12px #000; }
+    .sheet { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; padding: 70px 22px 24px; background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.82) 38%, #000); transform: translateY(105%); transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .v-title { font: 700 1.75rem/1.05 var(--display); letter-spacing: -0.035em; color: var(--v); }
+    .v-sub { margin-top: 6px; color: var(--muted); font-size: 0.92rem; }
+    .meter { margin-top: 16px; height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
+    .meter span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--v); transition: width 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s; }
+    .meter-ends { display: flex; justify-content: space-between; margin: 6px 0 16px; font-size: 0.72rem; color: var(--muted); }
+    .oops { position: absolute; z-index: 4; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px; text-align: center; background: #121212; }
+    .oops-title { font: 700 1.4rem/1.15 var(--display); letter-spacing: -0.03em; color: var(--coral); }
+    .oops-text { color: var(--muted); font-size: 0.92rem; margin-bottom: 8px; }
+    .phone[data-state="analyzing"] .drop,
+    .phone[data-state="result"] .drop,
+    .phone[data-state="error"] .drop { visibility: hidden; }
+    .phone[data-state="analyzing"] .shot,
+    .phone[data-state="result"] .shot { opacity: 1; }
+    .phone[data-state="analyzing"] .shot { filter: brightness(0.6); }
+    .phone[data-state="analyzing"] .scan { opacity: 1; animation: sweep 1.5s ease-in-out infinite; }
+    .phone[data-state="analyzing"] .busy { opacity: 1; }
+    .phone[data-state="result"] .sheet { transform: none; }
+    .phone[data-state="error"] .oops { display: flex; }
+    @keyframes sweep { from { transform: translateY(-100%); } to { transform: translateY(360%); } }
+    .report { max-width: 560px; }
+    .report-empty { padding-top: 20px; border-top: 2px solid var(--stage); font-size: 1rem; }
+    .report-body { border-top: 2px solid var(--stage); }
+    .report-file { padding: 16px 0; font-weight: 600; overflow-wrap: anywhere; }
+    .report-file span { font-weight: 400; }
+    .sig-item { padding: 18px 0; border-top: 1px solid rgba(0, 0, 0, 0.25); }
+    .sig-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .sig-name { font: 700 1.15rem/1.2 var(--display); letter-spacing: -0.02em; }
+    .sig-lean { font-size: 0.85rem; font-weight: 600; }
+    .sig-scale { position: relative; height: 6px; margin: 12px 0 10px; border-radius: 99px; background: linear-gradient(90deg, var(--mint), var(--lemon), var(--coral)); }
+    .sig-scale i { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--stage); border: 3px solid var(--chalk); transform: translate(-50%, -50%); box-shadow: 0 0 0 1px var(--stage); }
+    .sig-scale.is-empty { background: rgba(0, 0, 0, 0.18); }
+    .sig-detail { font-size: 0.95rem; max-width: 52ch; }
+    .report-note { margin-top: 6px; padding: 14px 0 0; border-top: 1px solid rgba(0, 0, 0, 0.25); font-size: 0.88rem; }
+    .recent { padding: clamp(80px, 11vw, 140px) 0; }
+    .recent-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 24px; margin-bottom: 40px; }
+    .recent-count { color: var(--muted); }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+    .card { position: relative; }
+    .card-open {
+      display: block; width: 100%; padding: 0; text-align: left; border: 0; background: none; border-radius: 22px; overflow: hidden; position: relative; aspect-ratio: 4 / 5; background: #151515;
+    }
+    .card-open img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
+    .card-open:hover img { transform: scale(1.04); }
+    .card-info { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 14px 14px; background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.88)); }
+    .card-verdict { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.95rem; }
+    .card-verdict::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+    .card-meta { margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
+    .card[data-verdict="ai"] { --c: var(--coral); }
+    .card[data-verdict="real"] { --c: var(--mint); }
+    .card[data-verdict="uncertain"] { --c: var(--lemon); }
+    .card-del { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); font-size: 1.1rem; line-height: 1; opacity: 0; transition: opacity 0.2s ease; }
+    .card:hover .card-del, .card:focus-within .card-del { opacity: 1; }
+    @media (hover: none) { .card-del { opacity: 1; } }
+    .grid-empty { color: var(--muted); font-size: 1.1rem; }
+    .grid-empty a { color: var(--chalk); }
+    .how { padding: clamp(80px, 11vw, 140px) 0; border-top: 1px solid var(--line); }
+    .how-grid { display: grid; gap: 40px clamp(32px, 8vw, 120px); grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 900px) { .how-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
+    .how-item { padding: 26px 0; border-top: 1px solid var(--line); }
+    .how-item:first-child { padding-top: 0; border-top: 0; }
+    .how-item h3 { font: 700 1.5rem/1.15 var(--display); letter-spacing: -0.03em; margin-bottom: 8px; }
+    .how-item p { color: var(--muted); max-width: 52ch; }
+    .how-limits { padding-top: 26px; border-top: 1px solid var(--line); max-width: 52ch; }
+    .how-status { margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
+    .foot { padding: 48px 0 calc(64px + var(--safe-bottom)); border-top: 1px solid var(--line); }
+    .foot-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; }
+    .foot-row p { max-width: 56ch; font-size: 0.88rem; color: var(--muted); }
+    .foot .logo-word { font-size: 1.4rem; }
+    .fab {
+      position: fixed; z-index: 60; right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(20px + var(--safe-bottom));
+      width: 58px; height: 58px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--stage);
+      background: radial-gradient(circle at 30% 30%, #d9ff8a, var(--mint) 55%, var(--sky));
+      box-shadow: 0 0 30px rgba(141, 247, 174, 0.45), 0 8px 20px rgba(0, 0, 0, 0.35);
+      transition: transform 0.2s ease, opacity 0.25s ease;
+    }
+    .fab.is-hidden { opacity: 0; pointer-events: none; transform: scale(0.8); }
+    .fab:hover { transform: scale(1.08) rotate(-8deg); }
+    @media (max-width: 720px) {
+      .pill-nav a:not(.solid) { display: none; }
+      .sphere { top: 76px; right: 50%; width: min(132vw, 580px); transform: translateX(50%); }
+      .hero { padding-top: min(92vw, 480px); }
+      .hero h1 { font-size: clamp(2.6rem, 11.5vw, 4.4rem); }
+      .lab { border-radius: 28px 28px 0 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .grad { animation: none; background-position: 30% 50%; }
+      .phone[data-state="analyzing"] .scan { animation: none; opacity: 0.5; transform: translateY(120%); }
+      * { transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body class="bg-black">
+  <div class="intro" id="intro" aria-hidden="true">
+    <p class="intro-word"><span class="intro-i">i</span>ntroducing</p>
+    <div class="intro-logo">
+      <span class="logo-word">Veri</span><span class="logo-badge">AI</span>
+    </div>
+    <button class="intro-skip" id="introSkip" type="button">Skip</button>
+  </div>
+
+  <header class="nav" id="nav">
+    <div class="wrap">
+      <a class="logo" href="#top" aria-label="Veri AI, home">
+        <span class="logo-word">Veri</span><span class="logo-badge">AI</span>
+      </a>
+      <nav class="pill-nav" aria-label="Main">
+        <button onclick="window.location.hash='#detector'" class="pill-nav-link">Detector</button>
+        <button onclick="window.location.hash='#history'" class="pill-nav-link">History</button>
+        <button onclick="window.location.hash='#how'" class="pill-nav-link">How it works</button>
+        <button onclick="document.getElementById('file').click()" class="btn btn--solid ml-4">Check image</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="hero-title">
+      <canvas class="sphere" id="sphere" aria-hidden="true"></canvas>
+      <div class="wrap">
+        <div class="hero-copy">
+          <p class="eyebrow">Introducing image authenticity checks</p>
+          <h1 id="hero-title" class="grad mb-6">is it real<br>or generated?</h1>
+          <p class="lede">Drop in any image. We check its pixels, noise and file history, then tell you how likely it is to be AI-made.</p>
+          <div class="actions mt-10">
+            <button onclick="document.getElementById('file').click()" class="btn btn--solid">Check an image</button>
+            <button onclick="window.location.hash='#history'" class="btn btn--ghost">See recent checks</button>
+          </div>
+          <p class="stat mt-8"><strong id="statTotal">0</strong> images checked</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="lab" id="detector" aria-labelledby="lab-title">
+      <div class="wrap">
+        <div class="lab-grid">
+          <div class="lab-copy">
+            <h2 id="lab-title" class="h2">drop an image.<br>get a verdict.</h2>
+            <p class="lab-text mt-4">Works with JPG, PNG, WebP, GIF and BMP up to 15&nbsp;MB. You can also paste an image from your clipboard.</p>
+          </div>
+
+          <div class="phone-wrap">
+            <div class="phone" id="phone" data-state="idle" data-verdict="">
+              <div class="phone-notch" aria-hidden="true"></div>
+              <div class="screen" id="screen">
+                <input class="file" id="file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp">
+
+                <label class="drop" for="file">
+                  <span class="drop-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 2.5l2.2 6.9 6.8 2.1-6.8 2.1L12 20.5l-2.2-6.9L3 11.5l6.8-2.1z" fill="currentColor"/></svg>
+                  </span>
+                  <span class="drop-title">drop an image</span>
+                  <span class="drop-sub">or tap to choose one</span>
+                </label>
+
+                <img class="shot" id="shot" alt="The image being checked">
+                <div class="scan" aria-hidden="true"></div>
+                <p class="busy" id="busy">Checking your image…</p>
+
+                <div class="oops" id="oops" role="alert">
+                  <p class="oops-title">Couldn't check that image</p>
+                  <p class="oops-text" id="oopsText"></p>
+                  <button class="btn btn--solid btn--small" type="button" id="oopsRetry">Try another image</button>
+                </div>
+
+                <div class="sheet" id="sheet" aria-live="polite">
+                  <h3 class="v-title" id="vTitle"></h3>
+                  <p class="v-sub" id="vSub"></p>
+                  <div class="meter" aria-hidden="true"><span id="meterFill"></span></div>
+                  <div class="meter-ends" aria-hidden="true"><span>real</span><span>AI</span></div>
+                  <button class="btn btn--solid btn--small" type="button" id="again">Check another image</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="report" id="report" aria-live="polite">
+            <p class="report-empty" id="reportEmpty">Choose an image and each check will show up here with its own score.</p>
+            <div class="report-body" id="reportBody" hidden>
+              <p class="report-file" id="reportFile"></p>
+              <ul class="sig-list" id="sigList"></ul>
+              <p class="report-note" id="reportNote"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="recent" id="history" aria-labelledby="recent-title">
+      <div class="wrap">
+        <div class="recent-head">
+          <h2 id="recent-title" class="h2">recent checks</h2>
+          <p class="recent-count" id="recentCount"></p>
+        </div>
+        <ul class="grid" id="grid"></ul>
+        <p class="grid-empty" id="gridEmpty" hidden>Nothing here yet. <button onclick="document.getElementById('file').click()" class="text-white underline">Check your first image.</button></p>
+      </div>
+    </section>
+
+    <section class="how" id="how" aria-labelledby="how-title">
+      <div class="wrap how-grid">
+        <h2 id="how-title" class="h2">three checks,<br>one answer</h2>
+        <div class="how-list">
+          <div class="how-item">
+            <h3>Trained classifier</h3>
+            <p>A model trained on real and generated images scores the whole picture. This is the strongest signal, and it only runs when a model is installed on the server.</p>
+          </div>
+          <div class="how-item">
+            <h3>Pixels and noise</h3>
+            <p>Camera sensors leave grain and generators often don't. We also scan the frequency pattern for the repeating marks that upscaling can leave behind.</p>
+          </div>
+          <div class="how-item">
+            <h3>File history</h3>
+            <p>Some tools write their name into the file, and cameras write their settings. When either is there, it counts. When it isn't, we ignore it.</p>
+          </div>
+          <p class="how-limits">No detector is certain. Screenshots, heavy compression and edits can fool every check, and new generators appear all the time. Treat a result as evidence, not proof.</p>
+          <p class="how-status" id="howStatus"></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <a class="logo" href="#top" aria-label="Veri AI, back to top"><span class="logo-word">Veri</span><span class="logo-badge">AI</span></a>
+      <p>Images are analysed on this server. We keep a small preview and the result so you can revisit it. Delete any check from History.</p>
+    </div>
+  </footer>
+
+  <button class="fab" id="fab" type="button" aria-label="Check an image" onclick="document.getElementById('file').click()">
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8zM18 13l.9 2.6L21.5 16.5l-2.6.9L18 20l-.9-2.6-2.6-.9 2.6-.9z" fill="currentColor"/></svg>
+  </button>
+
+  <script>
+    const PALETTES = [
+      { sky: ["#2b1055", "#ff7e5f"], sun: "#ffd27a", hills: ["#5b2a6e", "#2f1747", "#140a24"] },
+      { sky: ["#bfe3c0", "#eef7d6"], sun: "#fffbe0", hills: ["#6fae6a", "#3f8050", "#1e4a34"] },
+      { sky: ["#0f4c75", "#89d4cf"], sun: "#fff3c4", hills: ["#2c7a8c", "#1a5470", "#0c3048"] },
+      { sky: ["#f3c98b", "#f8e8c4"], sun: "#fff6dd", hills: ["#c1783e", "#9a5528", "#6d3a1b"] },
+      { sky: ["#f7b6de", "#fde0f0"], sun: "#ffffff", hills: ["#e07bb8", "#b9508f", "#7c2f62"] },
+      { sky: ["#1a1b4b", "#7a5af8"], sun: "#e9e2ff", hills: ["#43309b", "#291d6b", "#130d3a"] },
+      { sky: ["#ffe29f", "#ffa99f"], sun: "#fffaf0", hills: ["#e69a63", "#b9693f", "#7a3d27"] },
+      { sky: ["#9bb7ff", "#e6f0ff"], sun: "#ffffff", hills: ["#6d86b8", "#41557f", "#223156"] },
+      { sky: ["#021b1a", "#0d5c5a"], sun: "#e9fff9", hills: ["#12806c", "#0a5446", "#042b25"] },
+      { sky: ["#d9f99d", "#fef9c3"], sun: "#fffff0", hills: ["#8bc34a", "#5a9a2e", "#2f6420"] },
+    ];
+    function makeTexture(p, seed) {
+      const s = 128;
+      const c = document.createElement("canvas");
+      c.width = c.height = s;
+      const g = c.getContext("2d");
+      const sky = g.createLinearGradient(0, 0, 0, s);
+      sky.addColorStop(0, p.sky[0]);
+      sky.addColorStop(1, p.sky[1]);
+      g.fillStyle = sky;
+      g.fillRect(0, 0, s, s);
+
+      const sx = s * (0.25 + ((seed * 0.37) % 0.5));
+      const sy = s * (0.22 + ((seed * 0.21) % 0.2));
+      const glow = g.createRadialGradient(sx, sy, 0, sx, sy, s * 0.4);
+      glow.addColorStop(0, p.sun);
+      glow.addColorStop(0.25, p.sun);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      g.globalAlpha = 0.9;
+      g.fillStyle = glow;
+      g.fillRect(0, 0, s, s);
+      g.globalAlpha = 1;
+
+      p.hills.forEach((col, i) => {
+        const base = s * (0.52 + i * 0.16);
+        const amp = s * (0.12 - i * 0.025);
+        const f1 = 0.035 + ((seed + i) % 3) * 0.012;
+        const f2 = 0.09 + ((seed * 2 + i) % 4) * 0.02;
+        g.fillStyle = col;
+        g.beginPath();
+        g.moveTo(0, s);
+        for (let x = 0; x <= s; x += 4) {
+          g.lineTo(x, base + Math.sin(x * f1 + seed + i * 2) * amp + Math.sin(x * f2 + seed * 3) * amp * 0.35);
+        }
+        g.lineTo(s, s);
+        g.fill();
+      });
+      return c;
+    }
+
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const norm = (v) => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+
+    function initSphere(canvas, { calm = false } = {}) {
+      const ctx = canvas.getContext("2d");
+      const textures = PALETTES.map((p, i) => makeTexture(p, i + 1));
+      const COUNT = 56;
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      const tiles = Array.from({ length: COUNT }, (_, i) => {
+        const y = 1 - (2 * (i + 0.5)) / COUNT;
+        const r = Math.sqrt(1 - y * y);
+        const th = i * golden;
+        const p = [Math.cos(th) * r, y, Math.sin(th) * r];
+        let t1 = cross([0, 1, 0], p);
+        if (Math.hypot(...t1) < 1e-3) t1 = [1, 0, 0];
+        t1 = norm(t1);
+        const t2 = cross(p, t1);
+        const spin = ((i * 53) % 29 - 14) * 0.022;
+        const c = Math.cos(spin), s = Math.sin(spin);
+        return {
+          p,
+          t1: [c * t1[0] + s * t2[0], c * t1[1] + s * t2[1], c * t1[2] + s * t2[2]],
+          t2: [-s * t1[0] + c * t2[0], -s * t1[1] + c * t2[1], -s * t1[2] + c * t2[2]],
+          tex: textures[(i * 7) % textures.length],
+        };
+      });
+
+      let yaw = 0.6, pitch = -0.28, velYaw = 0, dragging = false, lastX = 0, lastY = 0;
+      let size = 0, dpr = 1, running = false, raf = 0;
+
+      const rotate = (v) => {
+        const cy = Math.cos(yaw), sy = Math.sin(yaw), cx = Math.cos(pitch), sx = Math.sin(pitch);
+        const x1 = v[0] * cy + v[2] * sy, z1 = -v[0] * sy + v[2] * cy;
+        return [x1, v[1] * cx - z1 * sx, v[1] * sx + z1 * cx];
+      };
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        size = canvas.clientWidth;
+        canvas.width = canvas.height = Math.round(size * dpr);
+        draw();
+      }
+
+      function drawTile(t, depth) {
+        const R = size * 0.34;
+        const D = 3.4;
+        const f = D / (D - depth.z);
+        const tile = R * 0.4 * f;
+        const cx = size / 2 + depth.x * R * f;
+        const cy = size / 2 - depth.y * R * f;
+        const a = [depth.t1[0] * tile, -depth.t1[1] * tile];
+        const b = [-depth.t2[0] * tile, depth.t2[1] * tile];
+
+        const front = depth.z > 0;
+        const fade = Math.min(1, Math.max(0, (depth.z + 0.25) / 0.7));
+        ctx.globalAlpha = front ? 0.45 + 0.55 * fade : 0.16 + 0.12 * (depth.z + 1);
+        ctx.setTransform(dpr * a[0], dpr * a[1], dpr * b[0], dpr * b[1], dpr * cx, dpr * cy);
+        ctx.beginPath();
+        ctx.roundRect(-0.5, -0.5, 1, 1, 0.13);
+        ctx.save();
+        ctx.clip();
+        ctx.drawImage(t.tex, -0.5, -0.5, 1, 1);
+        if (!front) { ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(-0.5, -0.5, 1, 1); }
+        ctx.restore();
+      }
+
+      function draw() {
+        if (!size) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const items = tiles.map((t) => {
+          const [x, y, z] = rotate(t.p);
+          return { t, d: { x, y, z, t1: rotate(t.t1), t2: rotate(t.t2) } };
+        }).sort((m, n) => m.d.z - n.d.z);
+
+        const R = size * 0.34;
+        const drawGlass = () => {
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.globalAlpha = 1;
+          const g = ctx.createRadialGradient(size / 2, size / 2, R * 0.2, size / 2, size / 2, R * 1.08);
+          g.addColorStop(0, "rgba(10,8,24,0.78)");
+          g.addColorStop(0.85, "rgba(8,6,20,0.7)");
+          g.addColorStop(1, "rgba(120,110,200,0.22)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(size / 2, size / 2, R * 1.04, 0, Math.PI * 2);
+          ctx.fill();
+        };
+
+        let glassDone = false;
+        for (const { t, d } of items) {
+          if (!glassDone && d.z > 0) { drawGlass(); glassDone = true; }
+          drawTile(t, d);
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+
+      function frame() {
+        if (!dragging) {
+          yaw += velYaw + (calm ? 0 : 0.0028);
+          velYaw *= 0.94;
+        }
+        draw();
+        raf = running ? requestAnimationFrame(frame) : 0;
+      }
+
+      function start() { if (!running && !calm) { running = true; raf = requestAnimationFrame(frame); } }
+      function stop() { running = false; cancelAnimationFrame(raf); raf = 0; }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX, dy = e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        velYaw = dx * 0.006;
+        yaw += dx * 0.006;
+        pitch = Math.max(-1.1, Math.min(1.1, pitch + dy * 0.004));
+        if (calm) draw();
+      });
+      const release = () => { dragging = false; if (calm) velYaw = 0; };
+      canvas.addEventListener("pointerup", release);
+      canvas.addEventListener("pointercancel", release);
+
+      new ResizeObserver(resize).observe(canvas);
+      new IntersectionObserver(([e]) => (e.isIntersecting ? start() : stop()), { threshold: 0 }).observe(canvas);
+      resize();
+    }
+
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const MAX_BYTES = 15 * 1024 * 1024;
+    const ACCEPT = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"];
+
+    const el = {
+      intro: $("#intro"), introSkip: $("#introSkip"),
+      phone: $("#phone"), screen: $("#screen"), file: $("#file"), shot: $("#shot"),
+      vTitle: $("#vTitle"), vSub: $("#vSub"), meterFill: $("#meterFill"),
+      again: $("#again"), oopsText: $("#oopsText"), oopsRetry: $("#oopsRetry"),
+      reportEmpty: $("#reportEmpty"), reportBody: $("#reportBody"), reportFile: $("#reportFile"),
+      sigList: $("#sigList"), reportNote: $("#reportNote"),
+      grid: $("#grid"), gridEmpty: $("#gridEmpty"), recentCount: $("#recentCount"),
+      statTotal: $("#statTotal"), howStatus: $("#howStatus"), fab: $("#fab"),
+    };
+
+    function runIntro() {
+      if (!document.documentElement.classList.contains("intro-on")) return;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { sessionStorage.setItem("veri-intro", "1"); } catch {}
+        el.intro.classList.add("is-done");
+        setTimeout(() => document.documentElement.classList.remove("intro-on"), 650);
+      };
+      el.introSkip.addEventListener("click", finish);
+      setTimeout(finish, 3300);
+    }
+
+    async function api(path, options) {
+      const res = await fetch(path, options);
+      let body = null;
+      try { body = await res.json(); } catch {}
+      if (!res.ok) throw new Error(body?.error || "Something went wrong. Try again.");
+      return body;
+    }
+
+    const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+    const pct = (p) => Math.round(p * 100);
+
+    function ago(iso) {
+      const secs = Math.round((new Date(iso) - Date.now()) / 1000);
+      const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+      const steps = [[60, "second"], [60, "minute"], [24, "hour"], [7, "day"], [4.35, "week"], [12, "month"], [Infinity, "year"]];
+      let v = secs;
+      for (const [size, unit] of steps) {
+        if (Math.abs(v) < size) return rtf.format(Math.round(v), unit);
+        v /= size;
+      }
+      return "";
+    }
+
+    const VERDICT = {
+      ai: { title: "Likely AI-generated", short: "Likely AI" },
+      real: { title: "Likely a real photo", short: "Likely real" },
+      uncertain: { title: "Can't tell", short: "Can't tell" },
+    };
+
+    function verdictLine(r) {
+      if (r.verdict === "ai") return `${pct(r.ai_probability)}% likely made by AI`;
+      if (r.verdict === "real") return `${100 - pct(r.ai_probability)}% likely a real photo`;
+      return `Signals are mixed (${pct(r.ai_probability)}% AI)`;
+    }
+
+    function setState(state, verdict = "") {
+      el.phone.dataset.state = state;
+      el.phone.dataset.verdict = verdict;
+    }
+
+    function renderResult(r, previewUrl) {
+      el.shot.src = previewUrl || r.image_url;
+      el.vTitle.textContent = VERDICT[r.verdict].title;
+      el.vSub.textContent = verdictLine(r);
+      el.meterFill.style.width = "0%";
+      setState("result", r.verdict);
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.meterFill.style.width = `${pct(r.ai_probability)}%`; }));
+      renderReport(r);
+    }
+
+    function renderReport(r) {
+      el.reportEmpty.hidden = true;
+      el.reportBody.hidden = false;
+      el.reportFile.replaceChildren(
+        r.filename,
+        Object.assign(document.createElement("span"), { textContent: `  ${r.width} × ${r.height}, ${fmtBytes(r.size_bytes)}` })
+      );
+
+      el.sigList.replaceChildren(...r.signals.map((s) => {
+        const li = document.createElement("li");
+        li.className = "sig-item";
+        const lean = s.lean === "ai" ? "Points to AI" : s.lean === "real" ? "Points to real" : s.score == null || s.weight === 0 ? "No evidence" : "Mixed";
+        const empty = s.score == null || s.weight === 0;
+        li.innerHTML = `
+          <div class="sig-head"><span class="sig-name"></span><span class="sig-lean"></span></div>
+          <div class="sig-scale ${empty ? "is-empty" : ""}">${empty ? "" : `<i style="left:${Math.min(97, Math.max(3, pct(s.score)))}%"></i>`}</div>
+          <p class="sig-detail"></p>`;
+        $(".sig-name", li).textContent = s.name;
+        $(".sig-lean", li).textContent = lean;
+        $(".sig-detail", li).textContent = s.detail;
+        return li;
+      }));
+
+      el.reportNote.textContent = r.method === "forensics"
+        ? "Scored with forensic checks only, which are a rough guide. A trained model gives a much stronger answer."
+        : "Scored with a trained model plus forensic checks.";
+      if (r.cached) el.reportNote.textContent += " You checked this exact file before, so this is the saved result.";
+    }
+
+    function resetPhone() {
+      el.file.value = "";
+      setState("idle");
+    }
+
+    let busy = false;
+
+    async function analyze(file) {
+      if (busy || !file) return;
+      if (!ACCEPT.includes(file.type)) return showError("Use a JPG, PNG, WebP, GIF or BMP image.");
+      if (file.size > MAX_BYTES) return showError("That image is over 15 MB. Try a smaller file.");
+
+      busy = true;
+      const preview = URL.createObjectURL(file);
+      el.shot.src = preview;
+      setState("analyzing");
+
+      const body = new FormData();
+      body.append("image", file);
+      try {
+        const [result] = await Promise.all([
+          api("/api/analyze", { method: "POST", body }),
+          new Promise((r) => setTimeout(r, calm ? 0 : 1100)),
+        ]);
+        renderResult(result, preview);
+        loadHistory();
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        busy = false;
+      }
+    }
+
+    function showError(message) {
+      el.oopsText.textContent = message;
+      setState("error");
+      revealPhone();
+    }
+
+    function revealPhone() {
+      const r = $("#phone").getBoundingClientRect();
+      if (r.top < 60 || r.bottom > innerHeight - 20) goToPhone();
+    }
+
+    function goToPhone() {
+      $("#phone").scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "center" });
+    }
+
+    el.file.addEventListener("change", () => analyze(el.file.files[0]));
+    el.again.addEventListener("click", () => { resetPhone(); el.file.click(); });
+    el.oopsRetry.addEventListener("click", () => { resetPhone(); el.file.click(); });
+
+    ["dragenter", "dragover"].forEach((t) => el.screen.addEventListener(t, (e) => { e.preventDefault(); el.screen.classList.add("is-over"); }));
+    ["dragleave", "drop"].forEach((t) => el.screen.addEventListener(t, (e) => { e.preventDefault(); el.screen.classList.remove("is-over"); }));
+    el.screen.addEventListener("drop", (e) => analyze(e.dataTransfer?.files?.[0]));
+    ["dragover", "drop"].forEach((t) => window.addEventListener(t, (e) => e.preventDefault()));
+
+    window.addEventListener("paste", (e) => {
+      const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/"));
+      if (f) { revealPhone(); analyze(f); }
+    });
+
+    document.querySelectorAll("[data-open-picker]").forEach((a) =>
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        goToPhone();
+        if (el.phone.dataset.state !== "idle" && el.phone.dataset.state !== "analyzing") resetPhone();
+      })
+    );
+    el.fab.addEventListener("click", goToPhone);
+
+    new IntersectionObserver(([e]) => el.fab.classList.toggle("is-hidden", e.isIntersecting), { threshold: 0.35 }).observe($("#detector"));
+
+    const nav = $(".nav");
+    const syncNav = () => nav.classList.toggle("is-stuck", scrollY > 40);
+    addEventListener("scroll", syncNav, { passive: true });
+    syncNav();
+
+    function renderStats(stats) {
+      if (!stats) return;
+      const from = Number(el.statTotal.dataset.n || 0);
+      el.statTotal.dataset.n = stats.total;
+      if (calm || from === stats.total) { el.statTotal.textContent = stats.total.toLocaleString(); return; }
+      const start = performance.now();
+      const tick = (t) => {
+        const k = Math.min(1, (t - start) / 900);
+        el.statTotal.textContent = Math.round(from + (stats.total - from) * (1 - Math.pow(1 - k, 3))).toLocaleString();
+        if (k < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    function card(item) {
+      const li = document.createElement("li");
+      li.className = "card";
+      li.dataset.verdict = item.verdict;
+      li.innerHTML = `
+        <button class="card-open" type="button">
+          <img alt="" loading="lazy">
+          <span class="card-info"><span class="card-verdict"></span><span class="card-meta"></span></span>
+        </button>
+        <button class="card-del" type="button">×</button>`;
+      const img = $("img", li);
+      img.src = item.image_url;
+      img.alt = `Preview of ${item.filename}`;
+      $(".card-verdict", li).textContent = `${VERDICT[item.verdict].short}, ${pct(item.ai_probability)}% AI`;
+      $(".card-meta", li).textContent = ago(item.created_at);
+      $(".card-open", li).setAttribute("aria-label", `Open result for ${item.filename}`);
+      $(".card-del", li).setAttribute("aria-label", `Delete check for ${item.filename}`);
+
+      $(".card-open", li).addEventListener("click", async () => {
+        try {
+          renderResult(await api(`/api/analyses/${item.id}`));
+          goToPhone();
+        } catch (err) { showError(err.message); }
+      });
+      $(".card-del", li).addEventListener("click", async () => {
+        try {
+          await api(`/api/analyses/${item.id}`, { method: "DELETE" });
+          if (el.shot.src.endsWith(item.image_url)) resetPhone();
+          loadHistory();
+        } catch (err) { showError(err.message); }
+      });
+      return li;
+    }
+
+    async function loadHistory() {
+      try {
+        const { items, stats, global } = await api("/api/history?limit=24");
+        el.grid.replaceChildren(...items.map(card));
+        el.gridEmpty.hidden = items.length > 0;
+        el.recentCount.textContent = stats.total
+          ? `You've checked ${stats.total.toLocaleString()}. ${stats.ai.toLocaleString()} flagged as AI, ${stats.real.toLocaleString()} look real.`
+          : "";
+        renderStats(global);
+      } catch {
+        el.gridEmpty.hidden = false;
+        el.gridEmpty.textContent = "Couldn't load recent checks. Refresh to try again.";
+      }
+    }
+
+    async function loadHealth() {
+      try {
+        const h = await api("/api/health");
+        el.howStatus.textContent = h.model ? `Detector running: ${h.model} plus forensic checks.` : (h.hint || "");
+      } catch {}
+    }
+
+    runIntro();
+    try {
+      initSphere($("#sphere"), { calm });
+    } catch (e) {
+      console.error('Failed to initialize sphere', e);
+    }
+    loadHistory();
+    loadHealth();
+  </script>
+</body>
+</html>
