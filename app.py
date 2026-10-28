@@ -13,6 +13,7 @@ UPLOAD_DIR = Path("data")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 MAX_BYTES = 15 * 1024 * 1024
 
 app = Flask(__name__, template_folder="templates")
@@ -38,6 +39,19 @@ def serialize_analysis(a: Analysis):
     }
 
 
+def _is_allowed_image(file_obj):
+    content_type = (file_obj.content_type or "").lower()
+    if content_type in ALLOWED:
+        return True
+
+    filename = (file_obj.filename or "").lower()
+    if not filename:
+        return False
+
+    suffix = Path(secure_filename(filename)).suffix.lower()
+    return suffix in ALLOWED_EXTENSIONS
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -54,25 +68,26 @@ def api_analyze():
     if not f:
         return jsonify({"error": "No image uploaded"}), 400
 
-    file_type = f.content_type or ""
-    if file_type not in ALLOWED:
+    if not _is_allowed_image(f):
         return jsonify({"error": "Unsupported file type"}), 400
 
-    # check file size by content length if possible
-    # browsers may not include content-length; fallback to stream check below
     try:
-        f.stream.seek(0, os.SEEK_END)
-        size = f.stream.tell()
-        f.stream.seek(0)
+        file_obj = f.stream
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0, os.SEEK_END)
+            size = file_obj.tell()
+            file_obj.seek(0)
+        else:
+            size = 0
     except Exception:
         size = 0
 
-    if size > MAX_BYTES:
+    if size and size > MAX_BYTES:
         return jsonify({"error": "File too large"}), 400
 
-    # sanitize filename
-    ext = Path(secure_filename(f.filename or "image.jpg")).suffix.lower() or ".jpg"
-    unique_name = f"{int(time.time())}-{uuid.uuid4().hex}{ext}"
+    original_name = secure_filename(f.filename or "image.jpg")
+    suffix = Path(original_name).suffix.lower() or ".jpg"
+    unique_name = f"{int(time.time())}-{uuid.uuid4().hex}{suffix}"
     dest = UPLOAD_DIR / unique_name
     f.save(dest)
 
@@ -139,7 +154,6 @@ def api_analysis(aid):
         if request.method == "GET":
             return jsonify(serialize_analysis(a))
 
-        # DELETE
         try:
             (UPLOAD_DIR / a.filename).unlink(missing_ok=True)
         except Exception:
