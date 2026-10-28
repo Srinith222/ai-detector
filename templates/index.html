@@ -124,6 +124,61 @@
     .pill-nav a:hover { background: rgba(255, 255, 255, 0.14); }
     .pill-nav a.solid { background: var(--chalk); color: var(--stage); font-weight: 600; }
     .pill-nav a.solid:hover { background: #e8e8e8; }
+    .assistant-toggle {
+      background: #fff;
+      color: #111;
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: 0 12px 34px rgba(0,0,0,0.3);
+    }
+    .assistant-toggle:hover { transform: translateY(-2px); }
+    .assistant-panel {
+      position: fixed; right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(92px + var(--safe-bottom));
+      width: min(360px, calc(100vw - 32px));
+      max-height: min(68vh, 540px);
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 16px;
+      border-radius: 24px; border: 1px solid var(--line);
+      background: rgba(12, 12, 12, 0.92); backdrop-filter: blur(18px);
+      box-shadow: 0 18px 80px rgba(0,0,0,0.45);
+      opacity: 0; transform: translateY(16px) scale(0.98); pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 65;
+    }
+    .assistant-panel.is-open {
+      opacity: 1; transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    .assistant-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .assistant-brand {
+      display: flex; align-items: center; gap: 10px;font-weight: 700; font-size: 0.95rem; letter-spacing: -0.02em;
+    }
+    .assistant-dot {
+      width: 10px; height: 10px; border-radius: 999px; background: var(--mint); box-shadow: 0 0 16px rgba(141,247,174,0.7);
+    }
+    .assistant-close {
+      border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,0.04); width: 30px; height: 30px;
+    }
+    .assistant-messages {
+      display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow: auto;
+      padding-right: 4px;
+    }
+    .assistant-bubble {
+      padding: 10px 12px; border-radius: 14px; line-height: 1.45; font-size: 0.9rem;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: var(--chalk);
+    }
+    .assistant-bubble strong { font-weight: 700; }
+    .assistant-bubble--accent {
+      background: rgba(141,247,174,0.12); border-color: rgba(141,247,174,0.2);
+    }
+    .assistant-actions {
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .assistant-chip {
+      border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 999px; padding: 8px 10px; font-size: 0.78rem; color: var(--chalk);
+    }
+    .assistant-chip:hover { background: rgba(255,255,255,0.08); }
     .hero {
       position: relative; isolation: isolate; overflow: hidden;
       min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-end;
@@ -299,10 +354,25 @@
         <button onclick="window.location.hash='#detector'" class="pill-nav-link">Detector</button>
         <button onclick="window.location.hash='#history'" class="pill-nav-link">History</button>
         <button onclick="window.location.hash='#how'" class="pill-nav-link">How it works</button>
-        <button onclick="document.getElementById('file').click()" class="btn btn--solid ml-4">Check image</button>
+        <button id="assistantToggle" class="btn btn--solid ml-4 assistant-toggle" type="button">Ask assistant</button>
       </nav>
     </div>
   </header>
+
+  <aside class="assistant-panel" id="assistantPanel" aria-live="polite" aria-label="AI assistant">
+    <div class="assistant-header">
+      <div class="assistant-brand"><span class="assistant-dot"></span>Oxygen assistant</div>
+      <button class="assistant-close" id="assistantClose" type="button" aria-label="Close assistant">×</button>
+    </div>
+    <div class="assistant-messages" id="assistantMessages">
+      <div class="assistant-bubble assistant-bubble--accent"><strong>Hi.</strong> Upload any image and I’ll explain the verdict, highlight the strongest signals, and tell you what to improve next.</div>
+    </div>
+    <div class="assistant-actions" aria-label="Suggested assistant prompts">
+      <button class="assistant-chip" type="button" data-prompt="Explain the score in simple language">Explain the score</button>
+      <button class="assistant-chip" type="button" data-prompt="What should I improve in this image?">Improve this image</button>
+      <button class="assistant-chip" type="button" data-prompt="Should I trust this result?">Trust the result?</button>
+    </div>
+  </aside>
 
   <main id="top">
     <section class="hero" aria-labelledby="hero-title">
@@ -314,7 +384,7 @@
           <p class="lede">Drop in any image. We check its pixels, noise and file history, then tell you how likely it is to be AI-made.</p>
           <div class="actions mt-10">
             <button onclick="document.getElementById('file').click()" class="btn btn--solid">Check an image</button>
-            <button onclick="window.location.hash='#history'" class="btn btn--ghost">See recent checks</button>
+            <button id="assistantLaunch" class="btn btn--ghost">Ask the assistant</button>
           </div>
           <p class="stat mt-8"><strong id="statTotal">0</strong> images checked</p>
         </div>
@@ -417,8 +487,8 @@
     </div>
   </footer>
 
-  <button class="fab" id="fab" type="button" aria-label="Check an image" onclick="document.getElementById('file').click()">
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8zM18 13l.9 2.6L21.5 16.5l-2.6.9L18 20l-.9-2.6-2.6-.9 2.6-.9L18 13z" fill="currentColor"/></svg>
+  <button class="fab" id="fab" type="button" aria-label="Open assistant" onclick="document.getElementById('assistantPanel').classList.toggle('is-open')">
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 2.5a7.5 7.5 0 0 0-7.5 7.5c0 3.1 1.9 5.7 4.6 6.8V21l4.5-2.5 4.5 2.5v-4.2c2.7-1.1 4.6-3.7 4.6-6.8A7.5 7.5 0 0 0 12 2.5zm0 3.2a4.3 4.3 0 1 1 0 8.6 4.3 4.3 0 0 1 0-8.6z" fill="currentColor"/></svg>
   </button>
 
   <script>
@@ -620,11 +690,49 @@
       sigList: $("#sigList"), reportNote: $("#reportNote"),
       grid: $("#grid"), gridEmpty: $("#gridEmpty"), recentCount: $("#recentCount"),
       statTotal: $("#statTotal"), howStatus: $("#howStatus"), fab: $("#fab"),
+      assistantToggle: $("#assistantToggle"), assistantPanel: $("#assistantPanel"), assistantClose: $("#assistantClose"),
+      assistantMessages: $("#assistantMessages"), assistantLaunch: $("#assistantLaunch"),
     };
+
+    function setAssistantOpen(open) {
+      if (!el.assistantPanel) return;
+      el.assistantPanel.classList.toggle("is-open", open);
+    }
+
+    function addAssistantMessage(message, accent = false) {
+      const bubble = document.createElement("div");
+      bubble.className = `assistant-bubble${accent ? " assistant-bubble--accent" : ""}`;
+      bubble.innerHTML = message;
+      el.assistantMessages.appendChild(bubble);
+      el.assistantMessages.scrollTop = el.assistantMessages.scrollHeight;
+    }
+
+    function updateAssistantFeedback(result) {
+      if (!result || !el.assistantMessages) return;
+      el.assistantMessages.replaceChildren();
+      const score = pct(result.ai_probability || 0);
+      const verdictText = result.verdict === "ai" ? "This image looks synthetic" : result.verdict === "real" ? "This image looks natural" : "This image is ambiguous";
+      const signalSummary = Array.isArray(result.signals) && result.signals.length
+        ? result.signals.slice(0, 2).map((signal) => signal.name).join(" • ")
+        : "pixel consistency and file metadata";
+      addAssistantMessage(`<strong>${verdictText}.</strong> The detector scored it at ${score}% AI confidence.`, true);
+      addAssistantMessage(`The strongest clues are ${signalSummary}. If you want a cleaner sample, check for over-smoothing, repeated textures, or metadata that looks copied across images.`);
+      addAssistantMessage(`Next step: ${result.verdict === "ai" ? "verify whether it was created or edited with a generator, then compare a second source image for the same subject." : result.verdict === "real" ? "keep the image and compare it against another original capture before making a final call." : "review the image in a brighter view and inspect the most suspicious artifacts before deciding."}`);
+    }
+
+    function setAssistantPromptFromButton(event) {
+      const prompt = event.currentTarget.dataset.prompt;
+      if (!prompt) return;
+      addAssistantMessage(`<strong>Prompt:</strong> ${prompt}`);
+      setAssistantOpen(true);
+    }
+
+    document.querySelectorAll(".assistant-chip").forEach((chip) => {
+      chip.addEventListener("click", setAssistantPromptFromButton);
+    });
 
     function runIntro() {
       if (!document.documentElement.classList.contains("intro-on")) return;
-
       let finished = false;
       const finish = () => {
         if (finished) return;
@@ -700,6 +808,8 @@
       setState("result", r.verdict);
       requestAnimationFrame(() => requestAnimationFrame(() => { el.meterFill.style.width = `${pct(r.ai_probability)}%`; }));
       renderReport(r);
+      updateAssistantFeedback(r);
+      setAssistantOpen(true);
     }
 
     function renderReport(r) {
@@ -782,6 +892,9 @@
     el.file.addEventListener("change", () => analyze(el.file.files[0]));
     el.again.addEventListener("click", () => { resetPhone(); el.file.click(); });
     el.oopsRetry.addEventListener("click", () => { resetPhone(); el.file.click(); });
+    el.assistantToggle.addEventListener("click", () => setAssistantOpen(!el.assistantPanel.classList.contains("is-open")));
+    el.assistantClose.addEventListener("click", () => setAssistantOpen(false));
+    el.assistantLaunch.addEventListener("click", () => setAssistantOpen(true));
 
     ["dragenter", "dragover"].forEach((t) => el.screen.addEventListener(t, (e) => { e.preventDefault(); el.screen.classList.add("is-over"); }));
     ["dragleave", "drop"].forEach((t) => el.screen.addEventListener(t, (e) => { e.preventDefault(); el.screen.classList.remove("is-over"); }));
@@ -800,7 +913,7 @@
         if (el.phone.dataset.state !== "idle" && el.phone.dataset.state !== "analyzing") resetPhone();
       })
     );
-    el.fab.addEventListener("click", goToPhone);
+    el.fab.addEventListener("click", () => setAssistantOpen(!el.assistantPanel.classList.contains("is-open")));
 
     new IntersectionObserver(([e]) => el.fab.classList.toggle("is-hidden", e.isIntersecting), { threshold: 0.35 }).observe($("#detector"));
 
@@ -880,6 +993,7 @@
     }
 
     runIntro();
+    setAssistantOpen(false);
     try {
       initSphere($("#sphere"), { calm });
     } catch (e) {
