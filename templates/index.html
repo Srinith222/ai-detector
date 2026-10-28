@@ -117,12 +117,37 @@
     .nav .logo { transition: background-color 0.25s ease; }
     .nav.is-stuck .logo { padding: 7px 12px; border-radius: 16px; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(16px); }
     .pill-nav {
-      display: flex; gap: 2px; padding: 4px; border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 10px;
+      border-radius: 16px;
       background: rgba(255, 255, 255, 0.1); border: 1px solid var(--line); backdrop-filter: blur(16px);
     }
-    .pill-nav a { padding: 10px 16px; border-radius: 12px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: background-color 0.2s ease; }
-    .pill-nav a:hover { background: rgba(255, 255, 255, 0.14); }
+    .pill-nav button,
+    .pill-nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--chalk);
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+    .pill-nav button:hover,
+    .pill-nav a:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255,255,255,0.08);
+    }
+    .pill-nav button.solid,
     .pill-nav a.solid { background: var(--chalk); color: var(--stage); font-weight: 600; }
+    .pill-nav button.solid:hover,
     .pill-nav a.solid:hover { background: #e8e8e8; }
     .assistant-toggle {
       background: #fff;
