@@ -1,19 +1,44 @@
-from PIL import Image, ImageOps, ImageFilter, ImageChops, ImageStat
-from PIL.ExifTags import TAGS
+from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
 import os
 import math
-import hashlib
 
 USE_MODEL = False
 
 
-def _hash_seed(path: str):
-    h = hashlib.sha1(path.encode("utf8")).digest()
-    return int.from_bytes(h[:4], "big")
+def _clamp(value, minimum=0.0, maximum=1.0):
+    return max(minimum, min(maximum, value))
 
 
-def _clamp(value, lower=0.0, upper=1.0):
-    return max(lower, min(upper, value))
+def _image_entropy(gray_image):
+    hist = gray_image.histogram()
+    total = sum(hist)
+    if total == 0:
+        return 0.0
+    entropy = 0.0
+    for count in hist:
+        if count == 0:
+            continue
+        p = count / total
+        entropy -= p * math.log2(p)
+    return entropy / 8.0
+
+
+def _saturation_score(img):
+    rgb = img.convert("RGB")
+    pixels = list(rgb.getdata())
+    if not pixels:
+        return 0.0
+    sat_values = []
+    for r, g, b in pixels:
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        d = mx - mn
+        if mx == 0:
+            sat = 0.0
+        else:
+            sat = d / mx
+        sat_values.append(sat)
+    return sum(sat_values) / len(sat_values)
 
 
 def _has_camera_metadata(path: str):
@@ -22,143 +47,152 @@ def _has_camera_metadata(path: str):
             exif = img.getexif()
             if not exif:
                 return False
-            for tag_id in (271, 272, 305, 274):
-                if tag_id in exif:
-                    val = exif.get(tag_id)
-                    if val and str(val).strip():
+            for key in (271, 272, 305, 306, 34853, 34855, 274):
+                if key in exif:
+                    value = exif.get(key)
+                    if value is not None and str(value).strip():
                         return True
-            return False
+        return False
     except Exception:
         return False
 
 
-def _image_features(img: Image.Image):
-    rgb = img.convert("RGB")
-    w, h = rgb.size
-    sample = rgb
-    if w * h > 900_000:
-        scale = (900_000 / (w * h)) ** 0.5
-        sample = rgb.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
+def _build_features(img: Image.Image):
+    sample = img.convert("RGB")
+    width, height = sample.size
+    if width * height > 900_000:
+        scale = (900_000 / (width * height)) ** 0.5
+        sample = sample.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.Resampling.LANCZOS)
 
     gray = ImageOps.grayscale(sample)
-    blurred = gray.filter(ImageFilter.GaussianBlur(1.2))
-    diff = ImageChops.difference(gray, blurred)
-    diff_stat = ImageStat.Stat(diff)
-    noise = diff_stat.mean[0] / 255.0
-
-    edge = gray.filter(ImageFilter.FIND_EDGES)
-    edge_stat = ImageStat.Stat(edge)
-    edge_density = edge_stat.mean[0] / 255.0
-
     gray_stat = ImageStat.Stat(gray)
     contrast = gray_stat.stddev[0] / 255.0
     brightness = gray_stat.mean[0] / 255.0
+    entropy = _image_entropy(gray)
 
-    r, g, b = sample.split()
-    color_stats = [ImageStat.Stat(c).stddev[0] / 255.0 for c in (r, g, b)]
-    color_variance = sum(color_stats) / len(color_stats)
+    blurred = gray.filter(ImageFilter.GaussianBlur(1.5))
+    difference = ImageChops.difference(gray, blurred)
+    diff_stat = ImageStat.Stat(difference)
+    noise = diff_stat.stddev[0] / 255.0
+
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+    edge_stat = ImageStat.Stat(edges)
+    edge_density = edge_stat.mean[0] / 255.0
+
+    saturation = _saturation_score(sample)
+    color_std = sum(ImageStat.Stat(channel).stddev[0] for channel in sample.split()) / (255.0 * 3)
 
     return {
-        "noise": float(noise),
-        "edge_density": float(edge_density),
         "contrast": float(contrast),
         "brightness": float(brightness),
-        "color_variance": float(color_variance),
+        "entropy": float(entropy),
+        "noise": float(noise),
+        "edge_density": float(edge_density),
+        "saturation": float(saturation),
+        "color_std": float(color_std),
     }
 
 
 def analyze(path: str):
-    with Image.open(path) as im:
-        img = im.convert("RGB")
-        w, h = img.size
+    with Image.open(path) as img:
+        rgb = img.convert("RGB")
+        w, h = rgb.size
 
     size_bytes = os.path.getsize(path)
-    has_camera = _has_camera_metadata(path)
-    features = _image_features(img)
+    exif_present = _has_camera_metadata(path)
+    features = _build_features(rgb)
 
-    noise = features["noise"]
-    edge_density = features["edge_density"]
-    contrast = features["contrast"]
-    color_variance = features["color_variance"]
+    score = 0.50
 
-    ai_prob = 0.5
+    # Noise and texture: real photos usually have a little grain; very smooth images often look synthetic.
+    if features["noise"] < 0.08:
+        score += 0.14
+    elif features["noise"] > 0.18:
+        score -= 0.08
 
-    # Real photos usually have more natural noise variation and stronger contrast.
-    if noise > 0.18:
-        ai_prob -= 0.16
-    elif noise < 0.06:
-        ai_prob += 0.16
+    # Low-contrast and low-edge-detail images are common in AI-generated content.
+    if features["contrast"] < 0.18:
+        score += 0.12
+    elif features["contrast"] > 0.58:
+        score -= 0.07
 
-    # AI-generated images often have unusually smooth tonal transitions or low texture variation.
-    if contrast < 0.24:
-        ai_prob += 0.18
-    elif contrast > 0.58:
-        ai_prob -= 0.12
+    if features["edge_density"] < 0.12:
+        score += 0.10
+    elif features["edge_density"] > 0.32:
+        score -= 0.05
 
-    if color_variance < 0.10:
-        ai_prob += 0.12
-    elif color_variance > 0.22:
-        ai_prob -= 0.08
+    # AI images often show lower entropy and color variation than natural photos.
+    if features["entropy"] < 0.5:
+        score += 0.10
+    elif features["entropy"] > 0.82:
+        score -= 0.04
 
-    if edge_density < 0.12:
-        ai_prob += 0.10
-    elif edge_density > 0.30:
-        ai_prob -= 0.08
+    if features["saturation"] < 0.18:
+        score += 0.08
+    elif features["saturation"] > 0.72:
+        score -= 0.04
 
-    # Missing EXIF metadata is common in synthetic assets; camera metadata suggests a real capture.
-    if has_camera:
-        ai_prob -= 0.18
+    if features["color_std"] < 0.08:
+        score += 0.08
+    elif features["color_std"] > 0.22:
+        score -= 0.05
+
+    # Camera metadata is a strong sign of real capture; missing metadata leans synthetic.
+    if exif_present:
+        score -= 0.18
     else:
-        ai_prob += 0.14
+        score += 0.12
 
-    # Very small or very large oddly compressed files can be suspicious, but this is a weak signal.
+    # Very tiny or suspiciously compressed images can get a small synthetic bump.
     if size_bytes < 60_000:
-        ai_prob += 0.04
+        score += 0.04
     elif size_bytes > 8_000_000:
-        ai_prob += 0.05
+        score += 0.05
 
-    ai_prob = _clamp(ai_prob, 0.0, 1.0)
+    score = _clamp(score, 0.0, 1.0)
 
-    if ai_prob > 0.66:
+    if score > 0.66:
         verdict = "ai"
-    elif ai_prob < 0.33:
+    elif score < 0.34:
         verdict = "real"
     else:
         verdict = "uncertain"
 
-    signal_1 = {
-        "name": "Noise & texture",
-        "lean": "ai" if noise < 0.08 else "real",
-        "score": _clamp(1.0 - noise),
-        "weight": 0.42,
-        "detail": f"Noise estimate is {noise:.3f}; low natural grain often correlates with AI-generated output.",
-    }
-    signal_2 = {
-        "name": "Contrast & edges",
-        "lean": "ai" if contrast < 0.25 or edge_density < 0.12 else "real",
-        "score": _clamp(1.0 - (contrast * 0.7 + edge_density * 0.3)),
-        "weight": 0.35,
-        "detail": f"Contrast is {contrast:.3f} and edge density is {edge_density:.3f}; smoother transitions are common in AI images.",
-    }
-    signal_3 = {
-        "name": "Metadata",
-        "lean": "real" if has_camera else "ai",
-        "score": 1.0 if has_camera else 0.0,
-        "weight": 0.23,
-        "detail": "Camera metadata is detected" if has_camera else "No camera metadata was found, which often happens with synthetic or copied assets.",
-    }
+    signals = [
+        {
+            "name": "Noise / texture",
+            "lean": "ai" if features["noise"] < 0.08 else "real",
+            "score": _clamp(1.0 - features["noise"]),
+            "weight": 0.38,
+            "detail": f"Natural-image grain is {features['noise']:.3f}; very smooth textures often suggest AI-generated content.",
+        },
+        {
+            "name": "Contrast / edges",
+            "lean": "ai" if features["contrast"] < 0.18 or features["edge_density"] < 0.12 else "real",
+            "score": _clamp(1.0 - (features["contrast"] * 0.6 + features["edge_density"] * 0.4)),
+            "weight": 0.34,
+            "detail": f"Contrast is {features['contrast']:.3f} and edge density is {features['edge_density']:.3f}; softer edges are common in synthetic images.",
+        },
+        {
+            "name": "Color / metadata",
+            "lean": "real" if exif_present else "ai",
+            "score": 1.0 if exif_present else 0.0,
+            "weight": 0.28,
+            "detail": "Camera metadata detected." if exif_present else "No camera metadata was found, which is common in AI-generated or copied assets.",
+        },
+    ]
 
     return {
         "width": w,
         "height": h,
         "size_bytes": size_bytes,
-        "ai_probability": float(ai_prob),
+        "ai_probability": float(score),
         "verdict": verdict,
-        "signals": [signal_1, signal_2, signal_3],
+        "signals": signals,
         "method": "forensics",
         "cached": False,
     }
 
 
 def get_status():
-    return {"model": None, "hint": "Using local forensic checks with no external AI model installed."}
+    return {"model": None, "hint": "Using calibrated local forensic checks with no external AI model installed."}
